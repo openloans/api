@@ -181,8 +181,9 @@ function parseDate (raw) {
   date.setMonth(parseInt(parts[0]));
   date.setDate(parseInt(parts[1]));
 
+  // assume we don't have any loans older than 1930
   var assumption = 1900;
-  if (parts[2] < 15) {
+  if (parts[2] < 30) {
     assumption = 2000;
   }
 
