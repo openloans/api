@@ -49,8 +49,6 @@ app.get('/v1/loans', function (req, res) {
     query += ' where ' + params.join(' and ');
   }
 
-console.log(query);
-
   app.db.query(query, null, function (err, rows) {
     if (err) {
       console.log(err);
