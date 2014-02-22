@@ -2,10 +2,11 @@
 var fs = require('fs');
 var csv = require('csv');
 var pg = require('pg');
+var config = require('../config');
 var db = {};
 
 db.connect = function (callback) {
-  pg.connect(conString, function(err, client, done) {
+  pg.connect(config.postgres, function(err, client, done) {
     if (err) {
       return console.error('error fetching client from pool', err);
     }
@@ -14,10 +15,14 @@ db.connect = function (callback) {
   });
 }
 
-db.query = function (query, values, callback) {
-  db.connect(function () {
-    //client.query('SELECT $1::int AS numbor', ['1'], function(err, result) {
-    client.query(query, values, function (err, result) {
+db.query = function (rawQuery, values, callback) {
+  db.connect(function (client, done) {
+    var query = {
+      text: rawQuery,
+      values: values
+    };
+
+    client.query(query, function (err, result) {
       done();
 
       if (err) {
@@ -70,10 +75,24 @@ var dateColumns = [
   'disbursement_date'
 ];
 
+var numericColumns = [
+  'original_principal',
+  'current_principal',
+  'monthly_interest',
+  'monthly_payment',
+  'rate'
+];
+
+var personNumericColumns = [
+  'adjusted_gross_income',
+  'spouse_adjusted_gross_income',
+  'family_size'
+];
+
 var loans = [];
-var valueOptions = {};
 var people = {};
 
+console.log('parsing csv...');
 csv()
   .from.path(__dirname + '/../data/SLH-Data-3.21.2014.csv', { delimiter: ',', escape: '"' })
   .transform(function (rawRow) {
@@ -95,37 +114,53 @@ csv()
       row[column] = parseDate(row[column]);
     }
 
+    for (var i in numericColumns) {
+      var column = numericColumns[i];
+      row[column] = parseFloat(row[column]);
+
+      if (isNaN(row[column])) {
+        row[column] = null;
+      }
+    }
+
+    for (var i in personNumericColumns) {
+      var column = personNumericColumns[i];
+      person[column] = parseFloat(person[column]);
+
+      if (isNaN(person[column])) {
+        person[column] = null;
+      }
+    }
+
+    if (person.joint_federal_income_tax == 'TRUE') {
+      person.joint_federal_income_tax = true;
+    } else if (person.joint_federal_income_tax == 'FALSE') {
+      person.joint_federal_income_tax = false;
+    } else {
+      person.joint_federal_income_tax = null;
+    }
+
     delete row.maturity_date;
     person.person_id = row.user_id;
     row.person_id = row.user_id;
     delete row.user_id;
     person.dob = row.user_dob;
     delete row.user_dob;
+
+    // can't find a better way to drop the first row for people
+    if (person.person_id == 'User ID #') {
+      return row;
+    }
+
+    // store them in an object so we get uniques
     people[person.person_id] = person;
 
     return row;
   })
   .on('record', function (row, index) {
     if (index === 0) return; // drop the column names
-
     row.loan_id = index;
     loans.push(row);
-
-return;
-    for (var column in optionColumns) {
-      var value = row[column];
-      if (!value) return;
-
-      if (!valueOptions[column]) {
-        valueOptions[column] = {};
-      }
-
-      if (!valueOptions[column][value]) {
-        valueOptions[column][value] = 1;
-      } else {
-        valueOptions[column][value]++;
-      }
-    }
   })
   .on('end', function (count) {
     console.log('Number of lines: ' + count);
@@ -138,6 +173,10 @@ return;
 function parseDate (raw) {
   var date = new Date();
   var parts = raw.split('/');
+
+  if (parts.length != 3) {
+    return null;
+  }
 
   date.setMonth(parseInt(parts[0]));
   date.setDate(parseInt(parts[1]));
@@ -154,7 +193,8 @@ function parseDate (raw) {
 
 function insertLoans () {
   if (!loans.length) {
-    console.log('done');
+    people = valuesToArray(people);
+    insertPeople();
     return;
   }
 
@@ -163,6 +203,8 @@ function insertLoans () {
 }
 
 function insertLoan (loan, callback) {
+  console.log('inserting loan', loan.loan_id);
+
   var columns = Object.keys(loan);
   var values = [];
 
@@ -170,15 +212,55 @@ function insertLoan (loan, callback) {
     values.push(loan[i]);
   }
 
-  var query = 'insert into loans (' + columns.join(',') + ') values $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13'; // getting really sick of this script
+  var query = 'insert into loans (' + columns.join(',') + ') values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)'; // better way to do that?
 
-  db.query(query, values, function () {
-    console.log(arguments);
+  db.query(query, values, function (err) {
+    if (err) {
+      console.log(loan);
+      return console.log(err);
+    }
 
     // avoid blowing up the call stack
     setTimeout(function () {
       callback();
     }, 1);
   });
+}
 
+function insertPeople () {
+  if (!people.length) {
+    return;
+  }
+
+  var person = people.pop();
+  insertPerson(person, insertPeople);
+}
+
+function insertPerson (person, callback) {
+  console.log('inserting person', person.person_id);
+
+  var columns = Object.keys(person);
+  var values = [];
+
+  for (var i in person) {
+    values.push(person[i]);
+  }
+
+  var query = 'insert into people (' + columns.join(',') + ') values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)'; // better way to do that?
+
+  db.query(query, values, function (err) {
+    if (err) {
+      console.log(person);
+      return console.log(err);
+    }
+
+    // avoid blowing up the call stack
+    setTimeout(function () {
+      callback();
+    }, 1);
+  });
+}
+
+function valuesToArray(obj) {
+  return Object.keys(obj).map(function (key) { return obj[key]; });
 }

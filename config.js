@@ -8,9 +8,9 @@ module.exports = {
   port: 3000,
   postgres: {
     host: 'localhost',
-    user: 'postgres',
-    pass: 'postgres',
-    port: 1234,
-    db: 'openloans'
+    user: 'openloans',
+    password: 'openloans_test_password',
+    database: 'openloans',
+    port: 5432
   }
 };
