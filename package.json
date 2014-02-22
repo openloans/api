@@ -1,0 +1,9 @@
+{
+  "name": "openloans-api",
+  "version": "0.0.0",
+  "description": "",
+  "dependencies": {
+    "pg": "~2.11.1",
+    "express": "~3.4.8"
+  }
+}
