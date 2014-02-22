@@ -229,7 +229,8 @@ function insertLoan (loan, callback) {
 
 function insertPeople () {
   if (!people.length) {
-    return;
+    console.log('done!');
+    process.exit();
   }
 
   var person = people.pop();
