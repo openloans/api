@@ -94,7 +94,7 @@ var people = {};
 
 console.log('parsing csv...');
 csv()
-  .from.path(__dirname + '/../data/SLH-Data-3.21.2014.csv', { delimiter: ',', escape: '"' })
+  .from.path(__dirname + '/../data/data-2-21-2014.csv', { delimiter: ',', escape: '"' })
   .transform(function (rawRow) {
     var row = {};
     var person = {};
